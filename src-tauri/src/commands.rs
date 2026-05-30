@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use tauri::State;
 
 #[derive(Serialize, Deserialize)]
@@ -44,49 +45,146 @@ pub struct UsageSummary {
     pub total_cost_usd: f64,
 }
 
-// Tauri IPC コマンド
-
 #[tauri::command]
 pub async fn get_usage_summary(
-    _state: State<'_, crate::AppState>,
+    state: State<'_, crate::AppState>,
 ) -> Result<UsageSummary, String> {
-    // TODO: 実際の集計を実装
+    let row = sqlx::query(
+        r#"
+        SELECT
+            COALESCE(SUM(input_tokens), 0) as total_input,
+            COALESCE(SUM(output_tokens), 0) as total_output,
+            COALESCE(SUM(cache_tokens), 0) as total_cache,
+            COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
+        FROM usage_records
+        "#,
+    )
+    .fetch_one(&state.db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     Ok(UsageSummary {
-        total_input: 0,
-        total_output: 0,
-        total_cache: 0,
-        total_cost_usd: 0.0,
+        total_input: row.try_get::<i64, _>("total_input").unwrap_or(0) as u64,
+        total_output: row.try_get::<i64, _>("total_output").unwrap_or(0) as u64,
+        total_cache: row.try_get::<i64, _>("total_cache").unwrap_or(0) as u64,
+        total_cost_usd: row.try_get::<f64, _>("total_cost_usd").unwrap_or(0.0),
     })
 }
 
 #[tauri::command]
 pub async fn get_five_hour_blocks(
-    _state: State<'_, crate::AppState>,
-    _tool: String,
-    _days: u32,
+    state: State<'_, crate::AppState>,
+    tool: String,
+    days: u32,
 ) -> Result<Vec<FiveHourBlock>, String> {
-    // TODO: 実際の集計を実装
-    Ok(vec![])
+    let since = chrono::Utc::now().timestamp() - (days as i64 * 86400);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            tool,
+            (recorded_at / 18000 * 18000) as block_start,
+            SUM(input_tokens) as input_tokens,
+            SUM(output_tokens) as output_tokens,
+            SUM(cache_tokens) as cache_tokens,
+            SUM(cost_usd) as cost_usd
+        FROM usage_records
+        WHERE recorded_at >= ?1
+          AND (?2 = 'all' OR tool = ?2)
+        GROUP BY tool, block_start
+        ORDER BY block_start DESC
+        "#,
+    )
+    .bind(since)
+    .bind(tool)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FiveHourBlock {
+            tool: r.try_get("tool").unwrap_or_default(),
+            block_start: r.try_get("block_start").unwrap_or(0),
+            block_end: r.try_get::<i64, _>("block_start").unwrap_or(0) + 18000,
+            input_tokens: r.try_get::<i64, _>("input_tokens").unwrap_or(0) as u64,
+            output_tokens: r.try_get::<i64, _>("output_tokens").unwrap_or(0) as u64,
+            cache_tokens: r.try_get::<i64, _>("cache_tokens").unwrap_or(0) as u64,
+            cost_usd: r.try_get::<f64, _>("cost_usd").unwrap_or(0.0),
+        })
+        .collect())
 }
 
 #[tauri::command]
 pub async fn get_weekly_summary(
-    _state: State<'_, crate::AppState>,
+    state: State<'_, crate::AppState>,
 ) -> Result<WeeklySummary, String> {
-    // TODO: 実際の集計を実装
+    let since = chrono::Utc::now().timestamp() - (28 * 86400);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            date(recorded_at, 'unixepoch') as day,
+            tool,
+            SUM(input_tokens) as input_tokens,
+            SUM(output_tokens) as output_tokens,
+            SUM(cache_tokens) as cache_tokens,
+            SUM(cost_usd) as cost_usd
+        FROM usage_records
+        WHERE recorded_at >= ?1
+        GROUP BY day, tool
+        ORDER BY day DESC
+        "#,
+    )
+    .bind(since)
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut days: std::collections::BTreeMap<String, Vec<ToolUsage>> = std::collections::BTreeMap::new();
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+    let mut total_cost = 0.0f64;
+
+    for r in rows {
+        let day: String = r.try_get("day").unwrap_or_default();
+        let usage = ToolUsage {
+            tool: r.try_get("tool").unwrap_or_default(),
+            input_tokens: r.try_get::<i64, _>("input_tokens").unwrap_or(0) as u64,
+            output_tokens: r.try_get::<i64, _>("output_tokens").unwrap_or(0) as u64,
+            cache_tokens: r.try_get::<i64, _>("cache_tokens").unwrap_or(0) as u64,
+            cost_usd: r.try_get::<f64, _>("cost_usd").unwrap_or(0.0),
+        };
+        total_input += usage.input_tokens;
+        total_output += usage.output_tokens;
+        total_cost += usage.cost_usd;
+        days.entry(day).or_default().push(usage);
+    }
+
+    let per_day: Vec<DaySummary> = days
+        .into_iter()
+        .map(|(date, tool_breakdown)| DaySummary {
+            date,
+            tool_breakdown,
+        })
+        .collect();
+
+    let week_start = chrono::Utc::now().timestamp() - (28 * 86400);
+
     Ok(WeeklySummary {
-        week_start: 0,
-        per_day: vec![],
-        total_input: 0,
-        total_output: 0,
-        total_cost_usd: 0.0,
+        week_start,
+        per_day,
+        total_input,
+        total_output,
+        total_cost_usd: total_cost,
     })
 }
 
 #[tauri::command]
 pub async fn refresh_data(
-    _state: State<'_, crate::AppState>,
+    state: State<'_, crate::AppState>,
 ) -> Result<(), String> {
-    // TODO: ログ再スキャンを実装
-    Ok(())
+    crate::scanner::refresh_all(&state.db_pool)
+        .await
+        .map_err(|e| e.to_string())
 }

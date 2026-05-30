@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod parsers;
+mod scanner;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -21,7 +22,27 @@ pub fn run() {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
             let pool = rt.block_on(db::init_db(app.handle()))
                 .expect("Failed to initialize database");
-            app.manage(AppState { db_pool: pool });
+            app.manage(AppState { db_pool: pool.clone() });
+
+            // 起動時に一度スキャン（軽量のため非同期で実行）
+            let pool_clone = pool.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = scanner::refresh_all(&pool_clone).await {
+                    eprintln!("Initial scan failed: {}", e);
+                }
+            });
+
+            // 30分ごとの定期スキャン
+            let pool_clone = pool.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30 * 60));
+                loop {
+                    interval.tick().await;
+                    if let Err(e) = scanner::refresh_all(&pool_clone).await {
+                        eprintln!("Periodic scan failed: {}", e);
+                    }
+                }
+            });
 
             // トレイメニュー作成
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

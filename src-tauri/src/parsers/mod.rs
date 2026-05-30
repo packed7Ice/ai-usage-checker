@@ -18,7 +18,7 @@ pub struct UsageRecord {
 
 /// 各パーサーが実装するトレイト
 #[async_trait::async_trait]
-pub trait LogParser {
+pub trait LogParser: Send + Sync {
     /// このパーサーが対象とするツール名
     fn tool_name(&self) -> &'static str;
 

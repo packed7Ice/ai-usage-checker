@@ -39,7 +39,7 @@ body {
 }
 
 .summary {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .summary h2 {
@@ -75,20 +75,63 @@ body {
   color: #222;
 }
 
-.charts-placeholder {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  min-height: 200px;
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
-.charts-placeholder h2 {
+.tabs button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #e0e0e0;
+  color: #555;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.tabs button.active {
+  background-color: #007acc;
+  color: white;
+}
+
+.data-table {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+}
+
+.data-table h2 {
   margin-top: 0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   color: #555;
 }
 
-.charts-placeholder p {
+.data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.data-table th {
+  font-weight: 600;
+  color: #777;
+}
+
+.data-table tbody tr:hover {
+  background-color: #f9f9f9;
+}
+
+.data-table p {
   color: #999;
 }
