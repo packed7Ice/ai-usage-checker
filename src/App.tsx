@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { tauriService } from "./services/tauriService";
-import type { UsageSummary, FiveHourBlock, WeeklySummary, DaySummary } from "./types/usage";
+import type { UsageSummary, FiveHourBlock, WeeklySummary } from "./types/usage";
+import FiveHourChart from "./components/FiveHourChart";
+import WeeklyChart from "./components/WeeklyChart";
 import "./App.css";
 
 function App() {
@@ -42,11 +44,6 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDate = (ts: number) => {
-    const d = new Date(ts * 1000);
-    return d.toLocaleString();
   };
 
   return (
@@ -100,68 +97,16 @@ function App() {
       </div>
 
       {activeTab === "blocks" && (
-        <section className="data-table">
+        <section className="chart-section">
           <h2>5-Hour Blocks (Last 7 Days)</h2>
-          {blocks.length > 0 ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Tool</th>
-                  <th>Period Start</th>
-                  <th>Input</th>
-                  <th>Output</th>
-                  <th>Cache</th>
-                </tr>
-              </thead>
-              <tbody>
-                {blocks.map((b, i) => (
-                  <tr key={i}>
-                    <td>{b.tool}</td>
-                    <td>{formatDate(b.block_start)}</td>
-                    <td>{b.input_tokens.toLocaleString()}</td>
-                    <td>{b.output_tokens.toLocaleString()}</td>
-                    <td>{b.cache_tokens.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No block data available.</p>
-          )}
+          <FiveHourChart data={blocks} />
         </section>
       )}
 
-      {activeTab === "weekly" && weekly && (
-        <section className="data-table">
+      {activeTab === "weekly" && (
+        <section className="chart-section">
           <h2>Weekly Trend (Last 4 Weeks)</h2>
-          {weekly.per_day.length > 0 ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Tool</th>
-                  <th>Input</th>
-                  <th>Output</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weekly.per_day.map((day: DaySummary) =>
-                  day.tool_breakdown.map((tool, idx) => (
-                    <tr key={`${day.date}-${idx}`}>
-                      {idx === 0 && (
-                        <td rowSpan={day.tool_breakdown.length}>{day.date}</td>
-                      )}
-                      <td>{tool.tool}</td>
-                      <td>{tool.input_tokens.toLocaleString()}</td>
-                      <td>{tool.output_tokens.toLocaleString()}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          ) : (
-            <p>No weekly data available.</p>
-          )}
+          <WeeklyChart data={weekly} />
         </section>
       )}
     </main>
