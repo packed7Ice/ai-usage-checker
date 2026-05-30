@@ -3,6 +3,7 @@ import { tauriService } from "./services/tauriService";
 import type { UsageSummary, FiveHourBlock, WeeklySummary } from "./types/usage";
 import FiveHourChart from "./components/FiveHourChart";
 import WeeklyChart from "./components/WeeklyChart";
+import Settings from "./components/Settings";
 import "./App.css";
 
 function App() {
@@ -10,7 +11,7 @@ function App() {
   const [blocks, setBlocks] = useState<FiveHourBlock[]>([]);
   const [weekly, setWeekly] = useState<WeeklySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"blocks" | "weekly">("blocks");
+  const [activeTab, setActiveTab] = useState<"blocks" | "weekly" | "settings">("blocks");
 
   const loadData = async () => {
     setLoading(true);
@@ -94,6 +95,12 @@ function App() {
         >
           Weekly Summary
         </button>
+        <button
+          className={activeTab === "settings" ? "active" : ""}
+          onClick={() => setActiveTab("settings")}
+        >
+          Settings
+        </button>
       </div>
 
       {activeTab === "blocks" && (
@@ -107,6 +114,12 @@ function App() {
         <section className="chart-section">
           <h2>Weekly Trend (Last 4 Weeks)</h2>
           <WeeklyChart data={weekly} />
+        </section>
+      )}
+
+      {activeTab === "settings" && (
+        <section className="chart-section">
+          <Settings />
         </section>
       )}
     </main>

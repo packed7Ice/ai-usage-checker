@@ -113,3 +113,58 @@ body {
 .chart-section p {
   color: #999;
 }
+
+.settings {
+  max-width: 600px;
+}
+
+.settings h2 {
+  margin-top: 0;
+  font-size: 1.2rem;
+  color: #555;
+}
+
+.field {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field label {
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.25rem;
+}
+
+.field.inline label {
+  margin-bottom: 0;
+}
+
+.field input[type="text"] {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.settings button {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #007acc;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.saved {
+  margin-left: 0.5rem;
+  color: #34a853;
+  font-size: 0.9rem;
+}

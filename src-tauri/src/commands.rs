@@ -188,3 +188,56 @@ pub async fn refresh_data(
         .await
         .map_err(|e| e.to_string())
 }
+
+// Settings commands
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    pub claude_code_path: String,
+    pub opencode_path: String,
+    pub gemini_path: String,
+    pub input_cost_per_1k: String,
+    pub output_cost_per_1k: String,
+    pub auto_start: bool,
+}
+
+#[tauri::command]
+pub async fn get_settings(
+    state: State<'_, crate::AppState>,
+) -> Result<AppSettings, String> {
+    let rows = sqlx::query("SELECT key, value FROM app_settings")
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut settings = AppSettings::default();
+    for r in rows {
+        let key: String = r.try_get("key").unwrap_or_default();
+        let value: String = r.try_get("value").unwrap_or_default();
+        match key.as_str() {
+            "claude_code_path" => settings.claude_code_path = value,
+            "opencode_path" => settings.opencode_path = value,
+            "gemini_path" => settings.gemini_path = value,
+            "input_cost_per_1k" => settings.input_cost_per_1k = value,
+            "output_cost_per_1k" => settings.output_cost_per_1k = value,
+            "auto_start" => settings.auto_start = value == "true",
+            _ => {}
+        }
+    }
+    Ok(settings)
+}
+
+#[tauri::command]
+pub async fn set_setting(
+    state: State<'_, crate::AppState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    sqlx::query("INSERT INTO app_settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(&key)
+        .bind(&value)
+        .execute(&state.db_pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

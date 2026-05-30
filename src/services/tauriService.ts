@@ -5,6 +5,15 @@ import type {
   WeeklySummary,
 } from "../types/usage";
 
+export interface AppSettings {
+  claude_code_path: string;
+  opencode_path: string;
+  gemini_path: string;
+  input_cost_per_1k: string;
+  output_cost_per_1k: string;
+  auto_start: boolean;
+}
+
 /**
  * Tauri バックエンドへのコマンド呼び出しを抽象化するサービス層
  */
@@ -33,5 +42,13 @@ export const tauriService = {
 
   async refreshData(): Promise<void> {
     return await invoke("refresh_data");
+  },
+
+  async getSettings(): Promise<AppSettings> {
+    return await invoke<AppSettings>("get_settings");
+  },
+
+  async setSetting(key: string, value: string): Promise<void> {
+    return await invoke("set_setting", { key, value });
   },
 };

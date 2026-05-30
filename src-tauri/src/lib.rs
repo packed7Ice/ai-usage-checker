@@ -17,6 +17,10 @@ pub struct AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--flag1", "--flag2"]),
+        ))
         .setup(|app| {
             // データベース初期化
             let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
@@ -107,6 +111,8 @@ pub fn run() {
             commands::get_five_hour_blocks,
             commands::get_weekly_summary,
             commands::refresh_data,
+            commands::get_settings,
+            commands::set_setting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
