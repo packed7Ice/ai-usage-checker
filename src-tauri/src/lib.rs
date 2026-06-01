@@ -13,22 +13,39 @@ pub struct AppState {
     pub db_pool: sqlx::SqlitePool,
 }
 
+/// メインウィンドウを表示する共通ロジック
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    } else {
+        let _ = WebviewWindowBuilder::new(
+            app,
+            "main",
+            WebviewUrl::App("/".into()),
+        )
+        .title("AI Usage Checker")
+        .inner_size(960.0, 640.0)
+        .min_inner_size(960.0, 640.0)
+        .build();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--flag1", "--flag2"]),
+            None,
         ))
         .setup(|app| {
-            // データベース初期化
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-            let pool = rt.block_on(db::init_db(app.handle()))
+            // データベース初期化（tauri::async_runtime を使用し、独自 tokio runtime は作成しない）
+            let pool = tauri::async_runtime::block_on(db::init_db(app.handle()))
                 .expect("Failed to initialize database");
             app.manage(AppState { db_pool: pool.clone() });
 
-            // 起動時に一度スキャン（軽量のため非同期で実行）
+            // 起動時に一度スキャン
             let pool_clone = pool.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = scanner::refresh_all(&pool_clone).await {
@@ -36,7 +53,7 @@ pub fn run() {
                 }
             });
 
-            // 30分ごとの定期スキャン
+            // 30分ごとの定期スキャン（アプリ終了時に自動停止される）
             let pool_clone = pool.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(30 * 60));
@@ -63,43 +80,12 @@ pub fn run() {
                     "quit" => {
                         app.exit(0);
                     }
-                    "open" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        } else {
-                            let _ = WebviewWindowBuilder::new(
-                                app,
-                                "main",
-                                WebviewUrl::App("/".into()),
-                            )
-                            .title("AI Usage Checker")
-                            .inner_size(960.0, 640.0)
-                            .min_inner_size(960.0, 640.0)
-                            .build();
-                        }
-                    }
+                    "open" => show_main_window(&app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button, .. } = event {
-                        if button == MouseButton::Left {
-                            let app = tray.app_handle();
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            } else {
-                                let _ = WebviewWindowBuilder::new(
-                                    app,
-                                    "main",
-                                    WebviewUrl::App("/".into()),
-                                )
-                                .title("AI Usage Checker")
-                                .inner_size(960.0, 640.0)
-                                .min_inner_size(960.0, 640.0)
-                                .build();
-                            }
-                        }
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
@@ -113,6 +99,7 @@ pub fn run() {
             commands::refresh_data,
             commands::get_settings,
             commands::set_setting,
+            commands::set_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

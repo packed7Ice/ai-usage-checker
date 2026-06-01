@@ -32,13 +32,17 @@ export default function Settings() {
     setSaved(false);
   };
 
+  const handleAutoStartToggle = async (checked: boolean) => {
+    handleChange("auto_start", checked);
+    try {
+      await tauriService.setAutoStart(checked);
+    } catch (e) {
+      console.error("Failed to toggle auto-start:", e);
+    }
+  };
+
   const handleSave = async () => {
-    await tauriService.setSetting("claude_code_path", settings.claude_code_path);
-    await tauriService.setSetting("opencode_path", settings.opencode_path);
-    await tauriService.setSetting("gemini_path", settings.gemini_path);
-    await tauriService.setSetting("input_cost_per_1k", settings.input_cost_per_1k);
-    await tauriService.setSetting("output_cost_per_1k", settings.output_cost_per_1k);
-    await tauriService.setSetting("auto_start", settings.auto_start ? "true" : "false");
+    await tauriService.setSettings(settings);
     setSaved(true);
   };
 
@@ -99,7 +103,7 @@ export default function Settings() {
           id="auto-start"
           type="checkbox"
           checked={settings.auto_start}
-          onChange={(e) => handleChange("auto_start", e.target.checked)}
+          onChange={(e) => handleAutoStartToggle(e.target.checked)}
         />
         <label htmlFor="auto-start">Auto-start on login</label>
       </div>

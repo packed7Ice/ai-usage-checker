@@ -241,3 +241,28 @@ pub async fn set_setting(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn set_settings(
+    state: State<'_, crate::AppState>,
+    settings: AppSettings,
+) -> Result<(), String> {
+    let pairs = [
+        ("claude_code_path", settings.claude_code_path),
+        ("opencode_path", settings.opencode_path),
+        ("gemini_path", settings.gemini_path),
+        ("input_cost_per_1k", settings.input_cost_per_1k),
+        ("output_cost_per_1k", settings.output_cost_per_1k),
+        ("auto_start", if settings.auto_start { "true" } else { "false" }.to_string()),
+    ];
+
+    for (key, value) in &pairs {
+        sqlx::query("INSERT INTO app_settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+            .bind(key)
+            .bind(value)
+            .execute(&state.db_pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

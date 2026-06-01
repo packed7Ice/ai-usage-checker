@@ -29,10 +29,11 @@ async fn insert_records(pool: &SqlitePool, records: &[UsageRecord]) -> anyhow::R
     let mut tx = pool.begin().await?;
 
     for r in records {
+        let source_hash = format!("{}:{}:{}:{}", r.tool, r.recorded_at, r.input_tokens, r.output_tokens);
         sqlx::query(
             r#"
-            INSERT INTO usage_records (tool, session_id, recorded_at, input_tokens, output_tokens, cache_tokens, cost_usd)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO usage_records (tool, session_id, recorded_at, input_tokens, output_tokens, cache_tokens, cost_usd, source_hash)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT DO NOTHING
             "#,
         )
@@ -43,6 +44,7 @@ async fn insert_records(pool: &SqlitePool, records: &[UsageRecord]) -> anyhow::R
         .bind(r.output_tokens as i64)
         .bind(r.cache_tokens as i64)
         .bind(r.cost_usd)
+        .bind(source_hash)
         .execute(&mut *tx)
         .await?;
     }

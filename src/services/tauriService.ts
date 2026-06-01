@@ -51,4 +51,15 @@ export const tauriService = {
   async setSetting(key: string, value: string): Promise<void> {
     return await invoke("set_setting", { key, value });
   },
+
+  async setSettings(settings: AppSettings): Promise<void> {
+    return await invoke("set_settings", { settings });
+  },
+
+  async setAutoStart(enable: boolean): Promise<void> {
+    const cmd = enable
+      ? "plugin:autostart|enable"
+      : "plugin:autostart|disable";
+    return await invoke(cmd);
+  },
 };
