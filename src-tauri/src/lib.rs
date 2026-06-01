@@ -6,7 +6,7 @@ mod scanner;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Manager, WebviewWindowBuilder, WebviewUrl,
+    Manager, RunEvent, WebviewWindowBuilder, WebviewUrl,
 };
 
 pub struct AppState {
@@ -31,18 +31,29 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+fn hide_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
         .setup(|app| {
-            // データベース初期化（tauri::async_runtime を使用し、独自 tokio runtime は作成しない）
-            let pool = tauri::async_runtime::block_on(db::init_db(app.handle()))
-                .expect("Failed to initialize database");
+            // データベース初期化（エラーはログ出力して続行）
+            let pool = match tauri::async_runtime::block_on(db::init_db(app.handle())) {
+                Ok(pool) => pool,
+                Err(e) => {
+                    eprintln!("Failed to initialize database: {}", e);
+                    return Err(format!("Database initialization failed: {}", e).into());
+                }
+            };
             app.manage(AppState { db_pool: pool.clone() });
 
             // 起動時に一度スキャン
@@ -53,7 +64,7 @@ pub fn run() {
                 }
             });
 
-            // 30分ごとの定期スキャン（アプリ終了時に自動停止される）
+            // 30分ごとの定期スキャン
             let pool_clone = pool.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(30 * 60));
@@ -71,7 +82,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
 
             // トレイアイコン構築
-            let _tray = TrayIconBuilder::with_id("main")
+            match TrayIconBuilder::with_id("main")
                 .tooltip("AI CLI Usage Tracker")
                 .icon_as_template(false)
                 .menu(&menu)
@@ -88,7 +99,13 @@ pub fn run() {
                         show_main_window(tray.app_handle());
                     }
                 })
-                .build(app)?;
+                .build(app)
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Failed to build tray icon: {}", e);
+                }
+            }
 
             Ok(())
         })
@@ -101,6 +118,22 @@ pub fn run() {
             commands::set_setting,
             commands::set_settings,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!());
+
+    let app = match app {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("Failed to build Tauri application: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    app.run(|_app_handle, event| match event {
+        RunEvent::ExitRequested { api, .. } => {
+            // ウィンドウの×ボタンで終了させず、hide する
+            api.prevent_exit();
+            hide_main_window(_app_handle);
+        }
+        _ => {}
+    });
 }
