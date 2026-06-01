@@ -3,6 +3,8 @@ mod db;
 mod parsers;
 mod scanner;
 
+use std::fs::OpenOptions;
+use std::io::Write;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
@@ -11,6 +13,23 @@ use tauri::{
 
 pub struct AppState {
     pub db_pool: sqlx::SqlitePool,
+}
+
+/// 簡易ログ出力（Windows Release ビルドでは標準エラー出力が見えないためファイルに書き出す）
+fn write_log(msg: &str) {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let log_dir = std::path::PathBuf::from(local_app_data).join("ai-usage-checker/logs");
+        let _ = std::fs::create_dir_all(&log_dir);
+        let log_file = log_dir.join("error.log");
+        let mut file = match OpenOptions::new().create(true).append(true).open(&log_file) {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(file, "[{}] {}", timestamp, msg);
+    }
+    // フォールバック: 標準エラー出力
+    eprintln!("{}", msg);
 }
 
 /// メインウィンドウを表示する共通ロジック
@@ -50,8 +69,9 @@ pub fn run() {
             let pool = match tauri::async_runtime::block_on(db::init_db(app.handle())) {
                 Ok(pool) => pool,
                 Err(e) => {
-                    eprintln!("Failed to initialize database: {}", e);
-                    return Err(format!("Database initialization failed: {}", e).into());
+                    let msg = format!("Failed to initialize database: {}", e);
+                    write_log(&msg);
+                    return Err(msg.into());
                 }
             };
             app.manage(AppState { db_pool: pool.clone() });
@@ -60,7 +80,7 @@ pub fn run() {
             let pool_clone = pool.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = scanner::refresh_all(&pool_clone).await {
-                    eprintln!("Initial scan failed: {}", e);
+                    write_log(&format!("Initial scan failed: {}", e));
                 }
             });
 
@@ -71,15 +91,24 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     if let Err(e) = scanner::refresh_all(&pool_clone).await {
-                        eprintln!("Periodic scan failed: {}", e);
+                        write_log(&format!("Periodic scan failed: {}", e));
                     }
                 }
             });
 
             // トレイメニュー作成
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let open_i = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+            let menu = match (|| -> Result<_, Box<dyn std::error::Error>> {
+                let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                let open_i = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+                Ok(menu)
+            })() {
+                Ok(menu) => menu,
+                Err(e) => {
+                    write_log(&format!("Failed to create tray menu: {}", e));
+                    return Err(e);
+                }
+            };
 
             // トレイアイコン構築
             match TrayIconBuilder::with_id("main")
@@ -103,7 +132,7 @@ pub fn run() {
             {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Failed to build tray icon: {}", e);
+                    write_log(&format!("Failed to build tray icon: {}", e));
                 }
             }
 
@@ -123,14 +152,13 @@ pub fn run() {
     let app = match app {
         Ok(app) => app,
         Err(e) => {
-            eprintln!("Failed to build Tauri application: {}", e);
+            write_log(&format!("Failed to build Tauri application: {}", e));
             std::process::exit(1);
         }
     };
 
     app.run(|_app_handle, event| match event {
         RunEvent::ExitRequested { api, .. } => {
-            // ウィンドウの×ボタンで終了させず、hide する
             api.prevent_exit();
             hide_main_window(_app_handle);
         }
