@@ -1,7 +1,8 @@
-use super::{LogParser, UsageRecord};
+use super::{get_parse_state, set_parse_state, LogParser, UsageRecord};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde_json::Value;
+use sqlx::SqlitePool;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -14,15 +15,27 @@ impl LogParser for GeminiParser {
         "gemini"
     }
 
-    async fn parse(&self) -> Result<Vec<UsageRecord>> {
+    async fn parse(&self, pool: &SqlitePool) -> Result<Vec<UsageRecord>> {
         let base = resolve_base_path()?;
         let pattern = base.join("*/chats/*.json");
         let pattern_str = pattern.to_string_lossy().replace('\\', "/");
 
-        let mut records = Vec::new();
+        let mut all_records = Vec::new();
 
         for entry in glob::glob(&pattern_str)? {
             let path = entry?;
+            let path_str = path.to_string_lossy().to_string();
+
+            let meta = std::fs::metadata(&path)?;
+            let mtime = meta.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
+
+            let (_, last_mtime) = get_parse_state(pool, &path_str).await?;
+
+            if mtime <= last_mtime {
+                // 未変更ファイルはスキップ
+                continue;
+            }
+
             let file = File::open(&path)?;
             let reader = BufReader::new(file);
             let json: Value = serde_json::from_reader(reader)?;
@@ -45,8 +58,6 @@ impl LogParser for GeminiParser {
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0);
 
-                    // Gemini JSON には個別のタイムスタンプがない場合が多い。
-                    // ファイルの更新時刻をフォールバックとして使用
                     let recorded_at = item
                         .get("createTime")
                         .and_then(|v| v.as_str())
@@ -61,7 +72,7 @@ impl LogParser for GeminiParser {
                         })
                         .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
-                    records.push(UsageRecord {
+                    all_records.push(UsageRecord {
                         tool: self.tool_name().to_string(),
                         session_id: None,
                         recorded_at,
@@ -72,14 +83,15 @@ impl LogParser for GeminiParser {
                     });
                 }
             }
+
+            set_parse_state(pool, &path_str, 0, mtime).await?;
         }
 
-        Ok(records)
+        Ok(all_records)
     }
 }
 
 fn resolve_base_path() -> Result<PathBuf> {
-    // 環境変数での上書きを優先
     if let Ok(dir) = std::env::var("GEMINI_CLI_HOME") {
         return Ok(PathBuf::from(dir).join("tmp"));
     }

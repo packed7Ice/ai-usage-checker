@@ -1,4 +1,4 @@
-use crate::parsers::{claude_code::ClaudeCodeParser, gemini::GeminiParser, opencode::OpencodeParser, LogParser, UsageRecord};
+use crate::parsers::{claude_code::ClaudeCodeParser, gemini::GeminiParser, opencode::OpencodeParser, LogParser};
 use sqlx::SqlitePool;
 
 /// 全パーサーを実行し、新規レコードを DB に保存する
@@ -10,7 +10,7 @@ pub async fn refresh_all(pool: &SqlitePool) -> anyhow::Result<()> {
     ];
 
     for parser in parsers {
-        match parser.parse().await {
+        match parser.parse(pool).await {
             Ok(records) => {
                 if !records.is_empty() {
                     insert_records(pool, &records).await?;
@@ -25,7 +25,7 @@ pub async fn refresh_all(pool: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn insert_records(pool: &SqlitePool, records: &[UsageRecord]) -> anyhow::Result<()> {
+async fn insert_records(pool: &SqlitePool, records: &[super::parsers::UsageRecord]) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
     for r in records {
