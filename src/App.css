@@ -146,11 +146,19 @@ body {
   margin-bottom: 0;
 }
 
-.field input[type="text"] {
+.field input[type="text"],
+.field textarea {
   padding: 0.5rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.field small {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 0.2rem;
 }
 
 .settings button {

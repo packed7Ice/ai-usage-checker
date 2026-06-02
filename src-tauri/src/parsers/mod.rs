@@ -63,5 +63,6 @@ pub trait LogParser: Send + Sync {
 
     /// ログファイルをスキャンし、新しいレコードを返す
     /// pool を通じて parse_state テーブルにアクセスし、差分読み取りを行う
-    async fn parse(&self, pool: &SqlitePool) -> anyhow::Result<Vec<UsageRecord>>;
+    /// extra_paths: Google Drive 等で同期された他デバイスの追加パス（カンマ/改行区切り）
+    async fn parse(&self, pool: &SqlitePool, extra_paths: &[String]) -> anyhow::Result<Vec<UsageRecord>>;
 }

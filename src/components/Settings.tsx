@@ -5,6 +5,9 @@ interface Settings {
   claude_code_path: string;
   opencode_path: string;
   gemini_path: string;
+  additional_claude_code_paths: string;
+  additional_opencode_paths: string;
+  additional_gemini_paths: string;
   input_cost_per_1k: string;
   output_cost_per_1k: string;
   auto_start: boolean;
@@ -15,6 +18,9 @@ export default function Settings() {
     claude_code_path: "",
     opencode_path: "",
     gemini_path: "",
+    additional_claude_code_paths: "",
+    additional_opencode_paths: "",
+    additional_gemini_paths: "",
     input_cost_per_1k: "0.003",
     output_cost_per_1k: "0.015",
     auto_start: false,
@@ -78,6 +84,39 @@ export default function Settings() {
           onChange={(e) => handleChange("gemini_path", e.target.value)}
           placeholder="Leave empty for default"
         />
+      </div>
+
+      <div className="field">
+        <label>Additional Claude Code Paths (Google Drive synced)</label>
+        <textarea
+          rows={3}
+          value={settings.additional_claude_code_paths}
+          onChange={(e) => handleChange("additional_claude_code_paths", e.target.value)}
+          placeholder="C:\Users\...\Google Drive\ai-logs\pc-b\.claude&#10;Or comma-separated paths"
+        />
+        <small>Separate multiple paths with commas or new lines</small>
+      </div>
+
+      <div className="field">
+        <label>Additional Opencode DB Paths (Google Drive synced)</label>
+        <textarea
+          rows={3}
+          value={settings.additional_opencode_paths}
+          onChange={(e) => handleChange("additional_opencode_paths", e.target.value)}
+          placeholder="C:\Users\...\Google Drive\ai-logs\pc-b\opencode.db&#10;Or comma-separated paths"
+        />
+        <small>Separate multiple paths with commas or new lines</small>
+      </div>
+
+      <div className="field">
+        <label>Additional Gemini CLI Paths (Google Drive synced)</label>
+        <textarea
+          rows={3}
+          value={settings.additional_gemini_paths}
+          onChange={(e) => handleChange("additional_gemini_paths", e.target.value)}
+          placeholder="C:\Users\...\Google Drive\ai-logs\pc-b\.gemini\tmp&#10;Or comma-separated paths"
+        />
+        <small>Separate multiple paths with commas or new lines</small>
       </div>
 
       <div className="field">

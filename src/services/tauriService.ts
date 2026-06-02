@@ -9,6 +9,9 @@ export interface AppSettings {
   claude_code_path: string;
   opencode_path: string;
   gemini_path: string;
+  additional_claude_code_paths: string;
+  additional_opencode_paths: string;
+  additional_gemini_paths: string;
   input_cost_per_1k: string;
   output_cost_per_1k: string;
   auto_start: boolean;

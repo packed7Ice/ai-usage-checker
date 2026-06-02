@@ -7,27 +7,20 @@ use std::path::PathBuf;
 
 pub struct OpencodeParser;
 
-#[async_trait]
-impl LogParser for OpencodeParser {
-    fn tool_name(&self) -> &'static str {
-        "opencode"
-    }
-
-    async fn parse(&self, pool: &SqlitePool) -> Result<Vec<UsageRecord>> {
-        let db_path = resolve_db_path()?;
-
+impl OpencodeParser {
+    async fn parse_single_db(&self, pool: &SqlitePool, db_path: &PathBuf) -> Result<Vec<UsageRecord>> {
         if !db_path.exists() {
             return Ok(vec![]);
         }
 
-        // parse_state から最後に読み取った created_at の最大値を取得
-        let (last_offset, _) = get_parse_state(pool, "opencode").await?;
-        let last_created_at = last_offset; // opencode では offset を created_at として使用
+        let source_key = db_path.to_string_lossy().to_string();
+        let (last_offset, _) = get_parse_state(pool, &source_key).await?;
+        let last_created_at = last_offset;
+
+        let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .with_context(|| format!("Failed to open opencode DB at {:?}", db_path))?;
 
         let records = {
-            let conn = Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-                .with_context(|| format!("Failed to open opencode DB at {:?}", db_path))?;
-
             let mut stmt = conn
                 .prepare(
                     "SELECT tokens_in, tokens_out, created_at FROM message WHERE created_at IS NOT NULL AND created_at > ?1 ORDER BY created_at ASC"
@@ -56,7 +49,7 @@ impl LogParser for OpencodeParser {
             }
 
             records
-        }; // conn と stmt をここで drop
+        };
 
         let mut result = Vec::new();
         let mut max_created_at = last_created_at;
@@ -73,18 +66,53 @@ impl LogParser for OpencodeParser {
             });
         }
 
-        // 新しいレコードがあれば parse_state を更新
         if !result.is_empty() {
-            let meta = std::fs::metadata(&db_path)?;
+            let meta = std::fs::metadata(db_path)?;
             let mtime = meta.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
-            set_parse_state(pool, "opencode", max_created_at, mtime).await?;
+            set_parse_state(pool, &source_key, max_created_at, mtime).await?;
         }
 
         Ok(result)
     }
 }
 
-fn resolve_db_path() -> Result<PathBuf> {
+#[async_trait]
+impl LogParser for OpencodeParser {
+    fn tool_name(&self) -> &'static str {
+        "opencode"
+    }
+
+    async fn parse(&self, pool: &SqlitePool, extra_paths: &[String]) -> Result<Vec<UsageRecord>> {
+        let mut all_db_paths: Vec<PathBuf> = vec![resolve_default_db_path()?];
+
+        for p in extra_paths {
+            let pb = PathBuf::from(p);
+            if pb.exists() {
+                if pb.is_file() {
+                    all_db_paths.push(pb);
+                } else {
+                    // ディレクトリ指定の場合、opencode.db を探す
+                    let db_file = pb.join("opencode.db");
+                    if db_file.exists() {
+                        all_db_paths.push(db_file);
+                    }
+                }
+            }
+        }
+
+        let mut all_records = Vec::new();
+        for db_path in all_db_paths {
+            match self.parse_single_db(pool, &db_path).await {
+                Ok(recs) => all_records.extend(recs),
+                Err(e) => eprintln!("Failed to parse opencode DB {:?}: {}", db_path, e),
+            }
+        }
+
+        Ok(all_records)
+    }
+}
+
+fn resolve_default_db_path() -> Result<PathBuf> {
     if cfg!(target_os = "windows") {
         let local_app_data = std::env::var("LOCALAPPDATA")
             .context("LOCALAPPDATA not set")?;

@@ -9,18 +9,12 @@ use std::path::PathBuf;
 
 pub struct GeminiParser;
 
-#[async_trait]
-impl LogParser for GeminiParser {
-    fn tool_name(&self) -> &'static str {
-        "gemini"
-    }
-
-    async fn parse(&self, pool: &SqlitePool) -> Result<Vec<UsageRecord>> {
-        let base = resolve_base_path()?;
+impl GeminiParser {
+    async fn parse_single_dir(&self, pool: &SqlitePool, base: &PathBuf) -> Result<Vec<UsageRecord>> {
         let pattern = base.join("*/chats/*.json");
         let pattern_str = pattern.to_string_lossy().replace('\\', "/");
 
-        let mut all_records = Vec::new();
+        let mut records = Vec::new();
 
         for entry in glob::glob(&pattern_str)? {
             let path = entry?;
@@ -32,7 +26,6 @@ impl LogParser for GeminiParser {
             let (_, last_mtime) = get_parse_state(pool, &path_str).await?;
 
             if mtime <= last_mtime {
-                // 未変更ファイルはスキップ
                 continue;
             }
 
@@ -40,7 +33,6 @@ impl LogParser for GeminiParser {
             let reader = BufReader::new(file);
             let json: Value = serde_json::from_reader(reader)?;
 
-            // Gemini の JSON は配列またはオブジェクト
             let entries = match json {
                 Value::Array(arr) => arr,
                 Value::Object(_) => vec![json],
@@ -72,7 +64,7 @@ impl LogParser for GeminiParser {
                         })
                         .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
-                    all_records.push(UsageRecord {
+                    records.push(UsageRecord {
                         tool: self.tool_name().to_string(),
                         session_id: None,
                         recorded_at,
@@ -87,11 +79,39 @@ impl LogParser for GeminiParser {
             set_parse_state(pool, &path_str, 0, mtime).await?;
         }
 
+        Ok(records)
+    }
+}
+
+#[async_trait]
+impl LogParser for GeminiParser {
+    fn tool_name(&self) -> &'static str {
+        "gemini"
+    }
+
+    async fn parse(&self, pool: &SqlitePool, extra_paths: &[String]) -> Result<Vec<UsageRecord>> {
+        let mut all_bases: Vec<PathBuf> = vec![resolve_default_base_path()?];
+
+        for p in extra_paths {
+            let pb = PathBuf::from(p);
+            if pb.exists() {
+                all_bases.push(pb);
+            }
+        }
+
+        let mut all_records = Vec::new();
+        for base in all_bases {
+            match self.parse_single_dir(pool, &base).await {
+                Ok(recs) => all_records.extend(recs),
+                Err(e) => eprintln!("Failed to parse gemini dir {:?}: {}", base, e),
+            }
+        }
+
         Ok(all_records)
     }
 }
 
-fn resolve_base_path() -> Result<PathBuf> {
+fn resolve_default_base_path() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("GEMINI_CLI_HOME") {
         return Ok(PathBuf::from(dir).join("tmp"));
     }
